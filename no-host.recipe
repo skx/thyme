@@ -1,0 +1,27 @@
+#
+# no-host: This shows that we don't need to run any commands on the host
+#
+
+during:
+        # Ensure we can install packages.
+        apt-get update
+
+        # Install git, so we can clone our sources, then do it
+        apt-get --yes --force-yes install git-core
+        cd /work
+        git clone https://github.com/skx/kpie/
+
+        # Ensure we're in our source tree
+        cd /work/kpie
+
+        # Install the dependencies
+        apt-get install --yes --force-yes debhelper libglib2.0-dev libgtk2.0-dev libwnck-dev libx11-dev liblua5.1-0-dev pkg-config x11proto-core-dev build-essential devscripts
+
+        # build the binary
+        debuild -i -us -uc -b
+
+
+
+after:
+        ls /work/
+        ls /work/kpie

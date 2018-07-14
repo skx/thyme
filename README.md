@@ -78,6 +78,14 @@ You can see examples of genuine CI files here:
 * [failing.recipe](failing.recipe)
    * Demonstrates that failures terminate the build(s) cleanly.
 
+Of course I might be crazy!  It might be that you'd want to run ALL the steps
+inside a container.  In that case just ignore the `before:` and `after:`
+sections in your recipe - as this example shows:
+
+* [no-host.recipe](no-host.recipe)
+   * Run all the steps in the container.
+   * We have an `after:` section solely to show it worked.
+
 
 ## Thyme
 
