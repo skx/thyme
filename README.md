@@ -23,7 +23,7 @@ might miss things.  But in my experience the task of running a CI job
 can be broadly divided into three parts:
 
 * Tasks which are executed (on the host) before we begin.
-  * For example cloning a rmeote `git` repository.
+  * For example cloning a remote `git` repository.
   * Running this on the host simplifies things because you don't need to setup an SSH key in the container environment.
 * Tasks that happen in isolation, in a container or transient environment.
 * Tasks which are executed (on the host) after we've finished.
