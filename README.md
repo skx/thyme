@@ -18,9 +18,7 @@ In both cases the result will then be uploaded somewhere - for example a website
 
 ## Architecture of a Job
 
-This is where I suspect I'm going to be a little too Steve-specific, and
-might miss things.  But in my experience the task of running a CI job
-can be broadly divided into three parts:
+In my experience the task of running a CI job can be broadly divided into three parts:
 
 * Tasks which are executed (on the host) before we begin.
   * For example cloning a remote `git` repository.
