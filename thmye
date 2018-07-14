@@ -15,7 +15,6 @@ thyme - A proof-of-concept CI-like thing.
    --help         Show the help information for this script.
    --verbose      Show useful debugging information.
    --container=xx Use the specified docker image for our container-build.
-   --keep         Keep the temporary directory around, post-build.
    --recipe=XX    Load our recipe from the given file.
 
 =cut
@@ -147,15 +146,7 @@ sub executeRecipe
     my ( $job, $config ) = (@_);
 
     # Create a temporary directory
-    my $dir;
-    if ( $config->{ 'keep' } )
-    {
-        $dir = File::Temp::tempdir( CLEANUP => 0 );
-    }
-    else
-    {
-        $dir = File::Temp::tempdir( CLEANUP => 1 );
-    }
+    my $dir = File::Temp::tempdir( "/tmp/thyme.XXXXXX", CLEANUP => 0 );
     print "Operating in $dir\n";
 
     #
@@ -255,7 +246,6 @@ sub parsedOptions
       if (
            !GetOptions( "help"        => \$vars{ 'help' },
                         "container=s" => \$vars{ 'container' },
-                        "keep"        => \$vars{ 'keep' },
                         "recipe=s"    => \$vars{ 'recipe' },
                         "verbose"     => \$vars{ 'verbose' } ) );
 
