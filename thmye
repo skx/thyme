@@ -1,0 +1,292 @@
+#!/usr/bin/env perl
+
+=head1 NAME
+
+thyme - A proof-of-concept CI-like thing.
+
+=cut
+
+=head1 SYNOPSIS
+
+  thyme [options]
+
+  General Options:
+
+   --help         Show the help information for this script.
+   --verbose      Show useful debugging information.
+   --container=xx Use the specified docker image for our container-build.
+   --recipe=XX    Load our recipe from the given file.
+
+=cut
+
+
+=head1 ABOUT
+
+thyme is a simple script which is designed to allow building software in
+isolated Docker containers.  It allows you to test build-dependencies,
+and packaging without polluting your host - or setting up a complex
+build-environment.
+
+It is named `thyme` because it should save you time, even if it isn't
+a full and flexible pipeline system with dependencies like ick, or
+gitlab-runners.
+
+=cut
+
+=head1 AUTHOR
+
+ Steve
+ --
+ http://www.steve.org.uk/
+
+=cut
+
+
+=head1 LICENSE
+
+Copyright (c) 2018 by Steve Kemp.  All rights reserved.
+
+=cut
+
+
+
+
+use strict;
+use warnings;
+
+use Getopt::Long;
+use Pod::Usage;
+use File::Temp;
+
+
+=begin doc
+
+loadRecipe parses the specified configuration-file of tasks to execute.
+
+CI jobs are divided into three parts: before, during, and after. So this
+function returns a hash with those three keys.
+
+=end doc
+
+=cut
+
+sub loadRecipe
+{
+    my ($file) = (@_);
+
+    # The job
+    my %job;
+
+    # current section
+    my $label = "";
+
+    open( my $fh, "<", $file ) or
+      die "Failed to open $file - $!";
+    while ( my $line = <$fh> )
+    {
+
+        # skip comments
+        next if ( $line =~ /^#/ );
+
+        # We might have options - if we're not in the stage-section
+        if ( $line =~ /^([^=]+)=(.*)$/ )
+        {
+
+            my $key = $1;
+            my $val = $2;
+
+            # strip spaces
+            $key =~ s/^\s+|\s+$//g;
+            $val =~ s/^\s+|\s+$//g;
+
+            # Store the option
+            if ( length($label) == 0 )
+            {
+                $job{ 'options' }{ $key } = $val;
+            }
+        }
+
+        # label?
+        if ( $line =~ /^([a-zA-Z]+):$/ )
+        {
+            $label = $1;
+        }
+        else
+        {
+
+            if ( length($label) )
+            {
+                chomp($line);
+                if ( length($line) > 0 )
+                {
+                    push( @{ $job{ $label } }, $line );
+                }
+            }
+        }
+    }
+    close($fh);
+
+    return \%job;
+}
+
+
+=begin doc
+
+executeRecipe executes the recipe we've been given.
+
+CI jobs are divided into three parts: before, during, and after. This
+function basically just executes the jobs in turn.
+
+=end doc
+
+=cut
+
+sub executeRecipe
+{
+    my ( $job, $config ) = (@_);
+
+    # Create a temporary directory
+    my $dir = File::Temp::tempdir( CLEANUP => 0 );
+    print "Operating in $dir\n";
+
+    #
+    # Find our container
+    #
+    # Might be specified in the recipe
+    #
+    my $container = $job->{ 'options' }->{ 'container' };
+    if ( !$container )
+    {
+        # If not the default
+        $container = $config->{ 'container' };
+    }
+
+    # Ensure our current working directory is sane.
+    chdir($dir);
+
+    # Run the before-jobs
+    foreach my $line ( @{ $job->{ 'before' } } )
+    {
+        system($line );
+    }
+
+    # Write out "execute" in the temporary directory, the list of
+    # all the jobs we'll execute inside the image.
+    open( my $tmp, ">", "$dir/execute" ) or
+      die "Failed to write to $dir/execute: $!";
+
+    #
+    # header - ensuring we terminate on-error.
+    #
+    print $tmp "#!/bin/sh\n";
+    print $tmp "set -e\n";
+
+    #
+    # Now the "during" jobs should be appended.
+    #
+    foreach my $line ( @{ $job->{ 'during' } } )
+    {
+        print $tmp $line . "\n";
+    }
+
+    #
+    # Footer, touch "/work/.done".
+    #
+    # This way we can look for that to know if the steps inside
+    # docker completed successfully.
+    #
+    print $tmp "\ntouch /work/.done\n";
+    close($tmp);
+
+    #
+    # We can now use docker to run the temporary thing, in the configured
+    # container.
+    #
+    # Here we run interactively SOLELY so that we're blocking on the result
+    # and so that we can see the output when we run our job.
+    #
+    system(
+        "docker run -v $dir:/work --interactive --tty $container sh /work/execute"
+    );
+
+    #
+    # If the file ".done" doesn't exist then the previous steps didn't
+    # complete successfully.
+    #
+    if ( !-e "$dir/.done" )
+    {
+        print "Execution of docker-tasks failed\n";
+        return;
+    }
+
+    #
+    # Run the after-jobs
+    #
+    chdir($dir);
+    foreach my $line ( @{ $job->{ 'after' } } )
+    {
+        system($line );
+    }
+
+}
+
+=begin doc
+
+Parse any specified command-line options and return them.
+
+=end doc
+
+=cut
+
+sub parsedOptions
+{
+    my %vars;
+
+    exit
+      if (
+           !GetOptions( "help"        => \$vars{ 'help' },
+                        "container=s" => \$vars{ 'container' },
+                        "recipe=s"    => \$vars{ 'recipe' },
+                        "verbose"     => \$vars{ 'verbose' } ) );
+
+    pod2usage(1) if ( $vars{ 'help' } );
+
+    return (%vars);
+
+}
+
+
+
+#
+# Process the command-line options
+#
+my %config = parsedOptions();
+
+#
+# Default container
+#
+$config{ 'container' } ||= "debian:stretch";
+
+#
+# We expect a recipe to be specified, if it is missing we'll terminate.
+#
+if ( !$config{ 'recipe' } )
+{
+    print "--recipe is mandatory\n";
+    exit(1);
+}
+
+#
+# Parse the specified recipe
+#
+my $out = loadRecipe( $config{ 'recipe' } );
+
+#
+# Now we have a recipe to execute, we should run it.
+#
+executeRecipe( $out, \%config );
+
+#
+# All done.
+#
+exit 0;

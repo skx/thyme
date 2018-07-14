@@ -1,0 +1,30 @@
+#
+# This is the thyme-recipe
+#
+# We start out by cloning a remote Git repository, then we "build" that.
+#
+# Here we don't build - we just run "false" to terminate the build
+#
+
+
+#
+# Here we populate the work-space with our code
+#
+before:
+   git clone https://github.com/skx/templer
+
+
+#
+# The stuff here happens inside the temporary container.
+#
+# Because the command here fails we'll terminate at this step.
+#
+during:
+        false
+
+#
+# Because the `during` steps failed we'll not see the output of this
+# command - it won't be executed.
+#
+after:
+       echo "I'm not here"
