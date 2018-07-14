@@ -80,6 +80,58 @@ use Pod::Usage;
 use File::Temp;
 
 
+
+package Thyme;
+
+
+=begin doc
+
+Create a new Thyme job, with the specified file.
+
+=for example begin
+
+    #!/usr/bin/perl -w
+
+    use Thyme;
+    use strict;
+
+    my $obj = Thyme->new( filename => '/path/to/recipe.in');
+    my $obj->Execute( "debian:stretch" );
+
+=for example end
+
+=end doc
+
+=cut
+
+sub new
+{
+    my ( $proto, %supplied ) = (@_);
+    my $class = ref($proto) || $proto;
+
+    my $self = {};
+
+    #
+    #  Allow user supplied values to override our defaults
+    #
+    foreach my $key ( keys %supplied )
+    {
+        $self->{ lc $key } = $supplied{ $key };
+    }
+
+    bless( $self, $class );
+
+    #
+    # Ensure we load our recipe
+    #
+    die "Missing filename parameter" unless ( $self->{ 'filename' } );
+    $self->{ 'job' } = $self->loadRecipe( $self->{ 'filename' } );
+
+    return $self;
+
+}
+
+
 =begin doc
 
 loadRecipe parses the specified configuration-file of tasks to execute.
@@ -93,7 +145,7 @@ function returns a hash with those three keys.
 
 sub loadRecipe
 {
-    my ($file) = (@_);
+    my ( $self, $file ) = (@_);
 
     # The job
     my %job;
@@ -160,14 +212,19 @@ terminate on error.
 
 =cut
 
-sub writeShell {
-    my( $path, $container, @lines ) = ( @_ );
+sub writeShell
+{
+
+    my ( $self, $path, $container, @lines ) = (@_);
+
+    $self->{ 'verbose' } && print "Writing script to $path:\n";
 
     # We expand the container-name into a series of variables that
     # the user might use for uploading, etc.  Do that here.
     my $c_name = "";
     my $c_ver  = "";
-    if ( $container =~ /(.*)[:\/](.*)/ ) {
+    if ( $container =~ /(.*)[:\/](.*)/ )
+    {
         $c_name = $1;
         $c_ver  = $2;
     }
@@ -186,36 +243,42 @@ HEADER
 
     # Output the lines we've been given, expanding variables
     # as we write the output.
-    foreach my $line ( @lines )
+    foreach my $line (@lines)
     {
         # Expand $HOME -> /home/blah
-        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
-            $line = $1 . $ENV{'HOME'} . $2;
+        while ( $line =~ /^(.*)\$HOME(.*)$/ )
+        {
+            $line = $1 . $ENV{ 'HOME' } . $2;
         }
 
         # Expand $IMAGE_NAME -> "debian", etc.
-        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
+        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ )
+        {
             $line = $1 . $c_name . $2;
         }
+
         # Expand $IMAGE_VERSION -> "stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
+        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ )
+        {
             $line = $1 . $c_ver . $2;
         }
 
         # Expand $IMAGE -> "debian:stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
+        while ( $line =~ /^(.*)\$IMAGE(.*)$/ )
+        {
             $line = $1 . $container . $2;
         }
 
-        print $handle  $line . "\n";
+        print $handle $line . "\n";
+        $self->{ 'verbose' } && print "\t$line\n";
     }
-    close( $handle );
+    close($handle);
 }
 
 
 =begin doc
 
-executeRecipe executes the recipe we've been given.
+Execute executes the recipe we've been given.
 
 CI jobs are divided into three parts: before, during, and after. This
 function basically just executes the jobs in turn.
@@ -224,13 +287,18 @@ function basically just executes the jobs in turn.
 
 =cut
 
-sub executeRecipe
+sub Execute
 {
-    my ( $job, $config ) = (@_);
+    my ( $self, $default_container ) = (@_);
 
     # Create a temporary directory
     my $dir = File::Temp::tempdir( "/tmp/thyme.XXXXXX", CLEANUP => 0 );
     print "Operating in $dir\n";
+
+    #
+    # Our job
+    #
+    my $job = $self->{ 'job' };
 
     #
     # Find the container we're going to run with.
@@ -241,16 +309,17 @@ sub executeRecipe
     if ( !$container )
     {
         # If not the default
-        $container = $config->{ 'container' };
+        $container = $default_container;
     }
 
     # Ensure our current working directory is sane.
     chdir($dir);
 
     # Write out the beginning-script - and execute it.
-    push( @{ $job->{'before'}}, "touch .before" );
-    writeShell( "$dir/before.sh", $container, @{ $job->{ 'before' } } );
-    system( "/bin/sh $dir/before.sh" );
+    push( @{ $job->{ 'before' } }, "touch .before" );
+    $self->writeShell( "$dir/before.sh", $container, @{ $job->{ 'before' } } );
+    $self->{ 'verbose' } && print "Executing $dir/before.sh\n";
+    system("/bin/sh $dir/before.sh");
     if ( !-e "$dir/.before" )
     {
         print "Execution of before-tasks failed\n";
@@ -259,8 +328,9 @@ sub executeRecipe
 
     # Write out the during-script in the temporary directory, the list of
     # all the commands we'll execute inside the image.
-    push( @{ $job->{'during'}}, "touch /work/.during" );
-    writeShell( "$dir/during", $container, @{ $job->{ 'during' } } );
+    push( @{ $job->{ 'during' } }, "touch /work/.during" );
+    $self->writeShell( "$dir/during.sh", $container, @{ $job->{ 'during' } } );
+    $self->{ 'verbose' } && print "Executing $dir/during.sh\n";
 
     #
     # We can now use docker to run the temporary thing, in the configured
@@ -270,7 +340,7 @@ sub executeRecipe
     # and so that we can see the output when we run our job.
     #
     system(
-        "docker run -v $dir:/work --interactive --tty $container sh /work/during"
+        "docker run -v $dir:/work --interactive --tty $container sh /work/during.sh"
     );
 
     #
@@ -289,9 +359,10 @@ sub executeRecipe
     chdir($dir);
 
     # Write out the after-script - and execute it.
-    push( @{ $job->{'after'}}, "touch .after" );
-    writeShell( "$dir/after.sh",$container, @{ $job->{ 'after' } } );
-    system( "/bin/sh $dir/after.sh" );
+    push( @{ $job->{ 'after' } }, "touch .after" );
+    $self->writeShell( "$dir/after.sh", $container, @{ $job->{ 'after' } } );
+    $self->{ 'verbose' } && print "Executing $dir/after.sh\n";
+    system("/bin/sh $dir/after.sh");
 
     if ( !-e "$dir/.after" )
     {
@@ -301,61 +372,52 @@ sub executeRecipe
 
 }
 
-=begin doc
 
-Parse any specified command-line options and return them.
 
-=end doc
+##
+## Entry Point
+##
 
-=cut
-
-sub parsedOptions
-{
-    my %vars;
-
-    exit
-      if (
-           !GetOptions( "help"        => \$vars{ 'help' },
-                        "container=s" => \$vars{ 'container' },
-                        "recipe=s"    => \$vars{ 'recipe' },
-                        "verbose"     => \$vars{ 'verbose' } ) );
-
-    pod2usage(1) if ( $vars{ 'help' } );
-
-    return (%vars);
-
-}
-
+package main;
 
 
 #
-# Process the command-line options
+# Parsed command-line options go here
 #
-my %config = parsedOptions();
+my %CONFIG;
+
+exit
+  if (
+       !GetOptions( "help"        => \$CONFIG{ 'help' },
+                    "container=s" => \$CONFIG{ 'container' },
+                    "recipe=s"    => \$CONFIG{ 'recipe' },
+                    "verbose"     => \$CONFIG{ 'verbose' } ) );
+
+pod2usage(1) if ( $CONFIG{ 'help' } );
+
+
 
 #
 # Default container
 #
-$config{ 'container' } ||= "debian:stretch";
+$CONFIG{ 'container' } ||= "debian:stretch";
 
 #
 # We expect a recipe to be specified, if it is missing we'll terminate.
 #
-if ( !$config{ 'recipe' } )
+if ( !$CONFIG{ 'recipe' } )
 {
     print "--recipe is mandatory\n";
     exit(1);
 }
 
-#
-# Parse the specified recipe
-#
-my $out = loadRecipe( $config{ 'recipe' } );
 
 #
-# Now we have a recipe to execute, we should run it.
+# Create the object, and execute it.
 #
-executeRecipe( $out, \%config );
+my $obj = Thyme->new( filename => $CONFIG{ 'recipe' },
+                      verbose  => $CONFIG{ 'verbose' } );
+$obj->Execute( $CONFIG{ 'container' } );
 
 #
 # All done.
