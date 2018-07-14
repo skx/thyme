@@ -85,10 +85,14 @@ is executed, with some steps running on the host, and some in an
 anonymous container.
 
 By default we run against a Debian stretch image, but you can specify that
-on your command-line, or even in your recipe:
+on your command-line, or even in your recipe (as the [kpie.recipe](kpie.recipe) does ):
 
-    $ ci --recipe ./kpie.recipe --container=debian:jessie
     $ ci --recipe ./failing.recipe --container=debian:jessie
+
+vs:
+
+    $ ci --recipe ./failing.recipe --container=debian:stretch
+
 
 
 # Feedback?
