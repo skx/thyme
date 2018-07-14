@@ -1,0 +1,11 @@
+#
+# This just shows how we can expand some variables in the `before`
+# and `after` sections.
+#
+
+
+before:
+        /bin/echo "Our home is : $HOME"
+        /bin/echo "We're building this job with image '$IMAGE'"
+        /bin/echo -e "\tNAME: $IMAGE_NAME"
+        /bin/echo -e "\tVERSION: $IMAGE_VERSION"

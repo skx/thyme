@@ -161,12 +161,41 @@ sub executeRecipe
         $container = $config->{ 'container' };
     }
 
+    #
+    # Split the container-name into "name" + "version"
+    #
+    my $c_name = "";
+    my $c_ver  = "";
+    if ( $container =~ /(.*)[:\/](.*)/ ) {
+        $c_name = $1;
+        $c_ver  = $2;
+    }
+
     # Ensure our current working directory is sane.
     chdir($dir);
 
     # Run the before-jobs
     foreach my $line ( @{ $job->{ 'before' } } )
     {
+        # Expand $HOME -> /home/blah
+        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
+            $line = $1 . $ENV{'HOME'} . $2;
+        }
+
+        # Expand $IMAGE_NAME -> "debian", etc.
+        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
+            $line = $1 . $c_name . $2;
+        }
+        # Expand $IMAGE_VERSION -> "stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
+            $line = $1 . $c_ver . $2;
+        }
+
+        # Expand $IMAGE -> "debian:stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
+            $line = $1 . $container . $2;
+        }
+
         system($line );
     }
 
@@ -225,6 +254,25 @@ sub executeRecipe
     chdir($dir);
     foreach my $line ( @{ $job->{ 'after' } } )
     {
+        # Expand $HOME -> /home/blah
+        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
+            $line = $1 . $ENV{'HOME'} . $2;
+        }
+
+        # Expand $IMAGE_NAME -> "debian", etc.
+        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
+            $line = $1 . $c_name . $2;
+        }
+        # Expand $IMAGE_VERSION -> "stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
+            $line = $1 . $c_ver . $2;
+        }
+
+        # Expand $IMAGE -> "debian:stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
+            $line = $1 . $container . $2;
+        }
+
         system($line );
     }
 
