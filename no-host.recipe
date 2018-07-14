@@ -21,7 +21,12 @@ during:
         debuild -i -us -uc -b
 
 
-
+#
+# Though we run some anyway, just to show the generation worked.
+#
+# Ordinarily I'd use dput here.  But of course that would make this
+# an example that would work for nobody-else.
+#
 after:
-        ls /work/
-        ls /work/kpie
+        ls
+        ls kpie/
