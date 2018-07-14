@@ -29,63 +29,34 @@ In my experience the task of running a CI job can be broadly divided into three 
   * Again running this step on the host simplifies things because you don't need to setup credentials in your container for carrying out the upload.
 
 
-## An example job
-
-To give a concrete example I might want to build a Debian package of
-a repository.  To do that, on the host, I run this:
-
-    git clone ssh://git.example.com/repo/here dest/
-
-> **NOTE** I'm running this on the host because the host has a suitable SSH key setup, and I don't want to set that up in the container - if you want to do that it is supported though.
-
-Once I have the remote repository checked out locally, I can then build the
-package in an anonymous & isolated container:
-
-    cd dest/
-    apt-get install ..
-    debuild -i -us -uc -b
-
-This works because the first step was carried out in a temporary directory,
-and that same directory is mounted inside the container (at `/work`).
-
-Once the build has completed a generated `*.deb` file will be produced,
-and from there it can be uploaded to a package repository. (In the case of
-a website-build almost everything is the same, except rather than uploading
-a single file we'd upload the complete generated output via `rsync`.)
-
-And of course we might want to run these same things in different environments,
-such as Debian Jessie, Debian Stretch, Debian unstable.
-
-There are some sample recipes located in this repository which demonstrate
-this setup:
-
-* [kpie.recipe](kpie.recipe)
-* [lumail.recipe](lumail.recipe)
-
-In both cases we clone a repository (over HTTP in these examples) on the
-host system - then build the source inside a transient container.
-
-
-
 ## CI Job Configuration
 
-We've just established that we probably want to execute the main build inside a
+We've established that we probably want to execute the main build inside a
 transient docker container, and some things outside (typically the "before"
 and "after" stages).
 
-This is how we'd implement this:
+This is how `thyme` implements this:
 
 * Create a temporary directory on the host.
-  * Run the "before" steps against this temporary directory.
+  * Run the "before" steps against this temporary directory-tree.
+  * This is probably where you'd clone your remote `git`, `hg`, etc, repository.
 * Bind-mount that into the container in a known-location "`/work`".
-  * Run the "build" steps inside that container.
+  * Run the "build" steps inside that container against the repository.
 * Then upload the results.
   * By running the "after" steps on the host.
 
-We can define a configuration-file with three sections "before", "during",
-and "after".  Each will be a series of shell-commands as you would expect.
+In short a job is configured by writing a simple recipe which has three
+distinct sections within it, each containing shell-commands:
 
-You can see examples of genuine CI files here:
+* "before"
+  * Runs on the host.
+* "during"
+  * Runs in the container.
+* "after"
+  * Runs on the host.
+
+Each of these sections is optional, though of course you'll need to add at least
+one.  This repository includes some genuine CI recipes here:
 
 * [kpie.recipe](kpie.recipe)
    * Builds a Debian binary package of the [kpie](https://github.com/skx/kpie) utility.
@@ -94,23 +65,28 @@ You can see examples of genuine CI files here:
 * [failing.recipe](failing.recipe)
    * Demonstrates that failures terminate the build(s) cleanly.
 
-Of course I might be crazy!  It might be that you'd want to run ALL the steps
-inside a container.  In that case just ignore the `before:` and `after:`
-sections in your recipe - as this example shows:
+It might be that you'd want to run ALL the steps inside a container.  In that
+case just ignore the `before:` and `after:` sections in your recipe - as this
+example shows:
 
 * [no-host.recipe](no-host.recipe)
    * Run all the steps in the container.
    * We have an `after:` section solely to show it worked.
 
 
-## Thyme
 
-This repository contains my simple `thyme`-script.  Given a recipe it
-is executed, with some steps running on the host, and some in an
-anonymous container.
+## Usage
 
-By default we run against a Debian stretch image, but you can specify that
-on your command-line, or even in your recipe (as the [kpie.recipe](kpie.recipe) does ):
+To test this out:
+
+* Write a recipe, based upon one of the examples.
+* Invoke `thyme --recipe=/path/to/recipe.file` to run your job.
+* Finally to automate things 100%:
+   * Add a git-hook to make this happen every time you run `git push`!
+
+By default `thmye` will run using Debian stretch image, but you can specify
+a different one upon the command-line, or even in your recipe (as
+the [kpie.recipe](kpie.recipe) does ):
 
     $ ci --recipe ./failing.recipe --container=debian:jessie
 
