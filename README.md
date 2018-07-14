@@ -16,7 +16,7 @@ In both cases the result will then be uploaded somewhere - for example a website
 
 
 
-## Architecture of a CI Job
+## Architecture of a Job
 
 This is where I suspect I'm going to be a little too Steve-specific, and
 might miss things.  But in my experience the task of running a CI job
@@ -27,23 +27,24 @@ can be broadly divided into three parts:
 * Tasks which are executed (on the host) after we've finished.
 
 To give a concrete example I might want to build a Debian package of
-a repository.  To do that, on the host I run:
+a repository.  To do that, on the host, I run this:
 
-    git clone http://git.example.com/repo/here dest/
+    git clone ssh://git.example.com/repo/here dest/
+
+> **NOTE** The reason I'm running this on the host as it means I don't need to setup an SSH key within the container.
 
 Once I have that local clone (which probably requires SSH setup), I can
-build the package:
+build the package and assuming that the previous checkout is available
+this can be done in an anonymous container:
 
     cd dest/
     apt-get install ..
     debuild -i -us -uc -b
 
 Once the build has completed a generated `*.deb` file will be produced,
-and from there it will be uploaded to a package repository.
-
-(In the case of a website-build almost everything is the same, except
-rather than uploading a single file we'd upload the generated output
-via `rsync`.)
+and from there it can be uploaded to a package repository. (In the case of
+a website-build almost everything is the same, except rather than uploading
+a single file we'd upload the complete generated output via `rsync`.)
 
 And of course we might want to run these same things in different environments,
 such as Debian Jessie, Debian Stretch, Debian unstable.
