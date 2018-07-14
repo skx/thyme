@@ -41,7 +41,7 @@ build the package:
 Once the build has completed a generated `*.deb` file will be produced,
 and from there it will be uploaded to a package repository.
 
-(In the case of a website-build almost everyhting is the same, except
+(In the case of a website-build almost everything is the same, except
 rather than uploading a single file we'd upload the generated output
 via `rsync`.)
 
