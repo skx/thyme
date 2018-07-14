@@ -33,6 +33,27 @@ gitlab-runners.
 
 =cut
 
+=head1 OPERATIONS
+
+The program parses a recipe which can contain three sections of commands:
+
+=over 8
+
+=item before
+A list of commands to be executed (on the host) before starting the container.
+
+=item during
+A list of commands to be executed (in a container) to run your job.
+
+=item after
+A list of commands to be executed (on the host) after completing the job.
+
+=back
+
+If any of these sections fail then the process will be aborted.
+
+=cut
+
 =head1 AUTHOR
 
  Steve
@@ -132,6 +153,68 @@ sub loadRecipe
 
 =begin doc
 
+Write the given array of lines to a shell-script file, ensuring that we
+terminate on error.
+
+=end doc
+
+=cut
+
+sub writeShell {
+    my( $path, $container, @lines ) = ( @_ );
+
+    # We expand the container-name into a series of variables that
+    # the user might use for uploading, etc.  Do that here.
+    my $c_name = "";
+    my $c_ver  = "";
+    if ( $container =~ /(.*)[:\/](.*)/ ) {
+        $c_name = $1;
+        $c_ver  = $2;
+    }
+
+
+    open( my $handle, ">", $path ) or
+      die "Failed to write to $path - $!";
+
+    #
+    # header - Which ensures we terminate on-error.
+    #
+    print $handle <<HEADER;
+#!/bin/sh
+set -e
+HEADER
+
+    # Output the lines we've been given, expanding variables
+    # as we write the output.
+    foreach my $line ( @lines )
+    {
+        # Expand $HOME -> /home/blah
+        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
+            $line = $1 . $ENV{'HOME'} . $2;
+        }
+
+        # Expand $IMAGE_NAME -> "debian", etc.
+        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
+            $line = $1 . $c_name . $2;
+        }
+        # Expand $IMAGE_VERSION -> "stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
+            $line = $1 . $c_ver . $2;
+        }
+
+        # Expand $IMAGE -> "debian:stretch", etc.
+        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
+            $line = $1 . $container . $2;
+        }
+
+        print $handle  $line . "\n";
+    }
+    close( $handle );
+}
+
+
+=begin doc
+
 executeRecipe executes the recipe we've been given.
 
 CI jobs are divided into three parts: before, during, and after. This
@@ -150,9 +233,9 @@ sub executeRecipe
     print "Operating in $dir\n";
 
     #
-    # Find our container
+    # Find the container we're going to run with.
     #
-    # Might be specified in the recipe
+    # This might be specified in the recipe itself.
     #
     my $container = $job->{ 'options' }->{ 'container' };
     if ( !$container )
@@ -161,71 +244,23 @@ sub executeRecipe
         $container = $config->{ 'container' };
     }
 
-    #
-    # Split the container-name into "name" + "version"
-    #
-    my $c_name = "";
-    my $c_ver  = "";
-    if ( $container =~ /(.*)[:\/](.*)/ ) {
-        $c_name = $1;
-        $c_ver  = $2;
-    }
-
     # Ensure our current working directory is sane.
     chdir($dir);
 
-    # Run the before-jobs
-    foreach my $line ( @{ $job->{ 'before' } } )
+    # Write out the beginning-script - and execute it.
+    push( @{ $job->{'before'}}, "touch .before" );
+    writeShell( "$dir/before.sh", $container, @{ $job->{ 'before' } } );
+    system( "/bin/sh $dir/before.sh" );
+    if ( !-e "$dir/.before" )
     {
-        # Expand $HOME -> /home/blah
-        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
-            $line = $1 . $ENV{'HOME'} . $2;
-        }
-
-        # Expand $IMAGE_NAME -> "debian", etc.
-        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
-            $line = $1 . $c_name . $2;
-        }
-        # Expand $IMAGE_VERSION -> "stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
-            $line = $1 . $c_ver . $2;
-        }
-
-        # Expand $IMAGE -> "debian:stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
-            $line = $1 . $container . $2;
-        }
-
-        system($line );
+        print "Execution of before-tasks failed\n";
+        return;
     }
 
-    # Write out "execute" in the temporary directory, the list of
-    # all the jobs we'll execute inside the image.
-    open( my $tmp, ">", "$dir/execute" ) or
-      die "Failed to write to $dir/execute: $!";
-
-    #
-    # header - ensuring we terminate on-error.
-    #
-    print $tmp "#!/bin/sh\n";
-    print $tmp "set -e\n";
-
-    #
-    # Now the "during" jobs should be appended.
-    #
-    foreach my $line ( @{ $job->{ 'during' } } )
-    {
-        print $tmp $line . "\n";
-    }
-
-    #
-    # Footer, touch "/work/.done".
-    #
-    # This way we can look for that to know if the steps inside
-    # docker completed successfully.
-    #
-    print $tmp "\ntouch /work/.done\n";
-    close($tmp);
+    # Write out the during-script in the temporary directory, the list of
+    # all the commands we'll execute inside the image.
+    push( @{ $job->{'during'}}, "touch /work/.during" );
+    writeShell( "$dir/during", $container, @{ $job->{ 'during' } } );
 
     #
     # We can now use docker to run the temporary thing, in the configured
@@ -235,14 +270,14 @@ sub executeRecipe
     # and so that we can see the output when we run our job.
     #
     system(
-        "docker run -v $dir:/work --interactive --tty $container sh /work/execute"
+        "docker run -v $dir:/work --interactive --tty $container sh /work/during"
     );
 
     #
-    # If the file ".done" doesn't exist then the previous steps didn't
+    # If the file ".during" doesn't exist then the previous steps didn't
     # complete successfully.
     #
-    if ( !-e "$dir/.done" )
+    if ( !-e "$dir/.during" )
     {
         print "Execution of docker-tasks failed\n";
         return;
@@ -252,28 +287,16 @@ sub executeRecipe
     # Run the after-jobs
     #
     chdir($dir);
-    foreach my $line ( @{ $job->{ 'after' } } )
+
+    # Write out the after-script - and execute it.
+    push( @{ $job->{'after'}}, "touch .after" );
+    writeShell( "$dir/after.sh",$container, @{ $job->{ 'after' } } );
+    system( "/bin/sh $dir/after.sh" );
+
+    if ( !-e "$dir/.after" )
     {
-        # Expand $HOME -> /home/blah
-        while ( $line =~ /^(.*)\$HOME(.*)$/ ) {
-            $line = $1 . $ENV{'HOME'} . $2;
-        }
-
-        # Expand $IMAGE_NAME -> "debian", etc.
-        while ( $line =~ /^(.*)\$IMAGE_NAME(.*)$/ ) {
-            $line = $1 . $c_name . $2;
-        }
-        # Expand $IMAGE_VERSION -> "stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE_VERSION(.*)$/ ) {
-            $line = $1 . $c_ver . $2;
-        }
-
-        # Expand $IMAGE -> "debian:stretch", etc.
-        while ( $line =~ /^(.*)\$IMAGE(.*)$/ ) {
-            $line = $1 . $container . $2;
-        }
-
-        system($line );
+        print "Execution of after-tasks failed\n";
+        return;
     }
 
 }
