@@ -80,7 +80,7 @@ You can see examples of genuine CI files here:
 
 ## Thyme
 
-This repository contains my simple `tyme`-script.  Given a recipe it
+This repository contains my simple `thyme`-script.  Given a recipe it
 is executed, with some steps running on the host, and some in an
 anonymous container.
 
