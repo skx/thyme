@@ -96,6 +96,22 @@ vs:
 
 
 
+
+# HTTP Build-Server
+
+This repository contains a simple HTTP-server which can be used to
+list and trigger builds:
+
+    $ go run server.go
+
+Once launched you'll see a list of all recipes (<*.recipe>) and clicking
+on one will trigger the job - the output will be streamed to your client.
+
+The screen will scroll down to follow new output, until the process has
+terminated.
+
+
+
 # Feedback?
 
 Feedback is welcome.  Of course the thing we're missing from Jenkins
