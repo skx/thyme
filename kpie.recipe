@@ -42,4 +42,5 @@ during:
 # Also remember that this step runs on the host.
 #
 after:
-       cp kpie_* /tmp/
+        mkdir -p $HOME/out/$RECIPE/$IMAGE_VERSION
+        cp kpie_* $HOME/out/$RECIPE/$IMAGE_VERSION

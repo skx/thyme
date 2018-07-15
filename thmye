@@ -77,6 +77,7 @@ use warnings;
 
 use Getopt::Long;
 use Pod::Usage;
+use File::Basename;
 use File::Temp;
 
 
@@ -249,6 +250,22 @@ HEADER
         while ( $line =~ /^(.*)\$HOME(.*)$/ )
         {
             $line = $1 . $ENV{ 'HOME' } . $2;
+        }
+
+        # Expand $RECIPE -> basename of loaded recipe
+        while ( $line =~ /^(.*)\$RECIPE(.*)$/ )
+        {
+            my $pre  = $1;
+            my $post = $2;
+
+            # Get just the basename
+            my $file = File::Basename::basename( $self->{ 'filename' } );
+
+            # Remove the extension
+            $file =~ s{\.[^.]+$}{};
+
+            # Now handle the replacement
+            $line = $pre . $file . $post;
         }
 
         # Expand $IMAGE_NAME -> "debian", etc.
