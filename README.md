@@ -61,7 +61,7 @@ one.  This repository includes some genuine CI recipes here:
 * [kpie.recipe](kpie.recipe)
    * Builds a Debian binary package of the [kpie](https://github.com/skx/kpie) utility.
 * [lumail.recipe](lumail.recipe)
-   * Builds a Debian binary package of the [lumail](https://github.com/lumail/lumail) console-based email-client.
+   * Build a [lumail](https://github.com/lumail/lumail) binary.
 * [failing.recipe](failing.recipe)
    * Demonstrates that failures terminate the build(s) cleanly.
 
@@ -84,15 +84,15 @@ To test this out:
 * Finally to automate things 100%:
    * Add a git-hook to make this happen every time you run `git push`!
 
-By default `thmye` will run using Debian stretch image, but you can specify
+By default `thyme` will run using Debian stretch image, but you can specify
 a different one upon the command-line, or even in your recipe (as
 the [kpie.recipe](kpie.recipe) does ):
 
-    $ ci --recipe ./failing.recipe --container=debian:jessie
+    $ thyme --recipe ./failing.recipe --container=debian:jessie
 
 vs:
 
-    $ ci --recipe ./failing.recipe --container=debian:stretch
+    $ thyme --recipe ./failing.recipe --container=debian:stretch
 
 
 
