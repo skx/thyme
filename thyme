@@ -357,7 +357,7 @@ sub Execute
     # and so that we can see the output when we run our job.
     #
     system(
-        "docker run -v $dir:/work --interactive --tty $container sh /work/during.sh"
+        "docker run -v $dir:/work --interactive $container sh /work/during.sh"
     );
 
     #
