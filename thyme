@@ -397,6 +397,10 @@ sub Execute
 
 package main;
 
+#
+# Disable buffering
+#
+$|=1;
 
 #
 # Parsed command-line options go here
