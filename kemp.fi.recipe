@@ -1,0 +1,42 @@
+#
+# Rebuilds and uploads the website -  https://kemp.fi/
+#
+
+
+
+#
+# Clone the source - note this happens on the host due to the use of
+# SSH
+#
+before:
+        git clone ssh://skx@git.steve.org.uk:4444/websites/kemp.fi.git
+
+
+#
+# Rebuild
+#
+during:
+        #
+        # My Repository uses SSL so we need to install the HTTPS transport
+        #
+        apt-get update
+        apt-get install --yes --force-yes apt-transport-https
+
+        #
+        # Install the templer-package
+        #
+        echo 'deb https://packages.steve.org.uk/templer/stretch/ ./' > /etc/apt/sources.list.d/templer.list
+        apt-get update
+        apt-get install --yes --force-yes libapp-templer-perl
+
+        #
+        # Use templer to rebuild the site.
+        #
+        cd /work/kemp.fi
+        templer
+
+after:
+        #
+        # Now output it
+        #
+        rsync -vazr -e "ssh -l s-kemp" kemp.fi/output/ www.steve.org.uk:/srv/kemp.fi/htdocs/
