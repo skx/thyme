@@ -242,10 +242,16 @@ sub writeShellScript
     # header - Which ensures we terminate on-error.
     #
     print $handle <<HEADER;
-#!/bin/sh
+#!/bin/bash
 set -e
-set -x
 HEADER
+
+    if ( $self->{ 'verbose' } )
+    {
+        print $handle <<OPTIONS;
+set -x
+OPTIONS
+    }
 
     # Output the lines we've been given, expanding variables
     # as we write the output.
@@ -344,7 +350,7 @@ sub Execute
 
     # execute it.
     $self->{ 'verbose' } && print "Executing $dir/before.sh\n";
-    system("/bin/sh $dir/before.sh");
+    system("/bin/bash $dir/before.sh");
     if ( !-e "$dir/.before" )
     {
         print "Execution of before-tasks failed!\n";
@@ -393,7 +399,7 @@ sub Execute
 
     # Execute it.
     $self->{ 'verbose' } && print "Executing $dir/after.sh\n";
-    system("/bin/sh $dir/after.sh");
+    system("/bin/bash $dir/after.sh");
 
     if ( !-e "$dir/.after" )
     {
