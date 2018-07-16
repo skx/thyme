@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!/usr/bin/perl
 
 =head1 NAME
 
@@ -123,9 +123,13 @@ sub new
     bless( $self, $class );
 
     #
-    # Ensure we load our recipe
+    # Ensure we were given a recipe in our constructor
     #
     die "Missing filename parameter" unless ( $self->{ 'filename' } );
+
+    #
+    # Parse the named recipe.
+    #
     $self->{ 'job' } = $self->loadRecipe( $self->{ 'filename' } );
 
     return $self;
@@ -207,13 +211,13 @@ sub loadRecipe
 =begin doc
 
 Write the given array of lines to a shell-script file, ensuring that we
-terminate on error.
+terminate on error.  We expand some variables as we go.
 
 =end doc
 
 =cut
 
-sub writeShell
+sub writeShellScript
 {
 
     my ( $self, $path, $container, @lines ) = (@_);
@@ -240,6 +244,7 @@ sub writeShell
     print $handle <<HEADER;
 #!/bin/sh
 set -e
+set -x
 HEADER
 
     # Output the lines we've been given, expanding variables
@@ -325,29 +330,36 @@ sub Execute
     my $container = $job->{ 'options' }->{ 'container' };
     if ( !$container )
     {
-        # If not the default
+        # If not then use the default.
         $container = $default_container;
     }
 
     # Ensure our current working directory is sane.
     chdir($dir);
 
-    # Write out the beginning-script - and execute it.
+    # Write out the beginning-script
     push( @{ $job->{ 'before' } }, "touch .before" );
-    $self->writeShell( "$dir/before.sh", $container, @{ $job->{ 'before' } } );
+    $self->writeShellScript( "$dir/before.sh", $container,
+                             @{ $job->{ 'before' } } );
+
+    # execute it.
     $self->{ 'verbose' } && print "Executing $dir/before.sh\n";
     system("/bin/sh $dir/before.sh");
     if ( !-e "$dir/.before" )
     {
-        print "Execution of before-tasks failed\n";
-        return;
+        print "Execution of before-tasks failed!\n";
+
+        # Error
+        return 1;
     }
+
 
     # Write out the during-script in the temporary directory, the list of
     # all the commands we'll execute inside the image.
     push( @{ $job->{ 'during' } }, "touch /work/.during" );
-    $self->writeShell( "$dir/during.sh", $container, @{ $job->{ 'during' } } );
-    $self->{ 'verbose' } && print "Executing $dir/during.sh\n";
+    $self->writeShellScript( "$dir/during.sh", $container,
+                             @{ $job->{ 'during' } } );
+
 
     #
     # We can now use docker to run the temporary thing, in the configured
@@ -356,8 +368,9 @@ sub Execute
     # Here we run interactively SOLELY so that we're blocking on the result
     # and so that we can see the output when we run our job.
     #
+    $self->{ 'verbose' } && print "Executing $dir/during.sh\n";
     system(
-        "docker run -v $dir:/work --interactive $container sh /work/during.sh"
+          "docker run -v $dir:/work --interactive $container sh /work/during.sh"
     );
 
     #
@@ -366,27 +379,32 @@ sub Execute
     #
     if ( !-e "$dir/.during" )
     {
-        print "Execution of docker-tasks failed\n";
-        return;
+        print "Execution of docker-tasks failed!\n";
+
+        # Error
+        return 1;
     }
 
-    #
-    # Run the after-jobs
-    #
+    # Write out the after-script
     chdir($dir);
-
-    # Write out the after-script - and execute it.
     push( @{ $job->{ 'after' } }, "touch .after" );
-    $self->writeShell( "$dir/after.sh", $container, @{ $job->{ 'after' } } );
+    $self->writeShellScript( "$dir/after.sh", $container,
+                             @{ $job->{ 'after' } } );
+
+    # Execute it.
     $self->{ 'verbose' } && print "Executing $dir/after.sh\n";
     system("/bin/sh $dir/after.sh");
 
     if ( !-e "$dir/.after" )
     {
-        print "Execution of after-tasks failed\n";
-        return;
+        print "Execution of after-tasks failed!\n";
+
+        # Error
+        return 1;
     }
 
+    # All our steps completed successfully
+    return 0;
 }
 
 
@@ -400,7 +418,7 @@ package main;
 #
 # Disable buffering
 #
-$|=1;
+$| = 1;
 
 #
 # Parsed command-line options go here
@@ -419,28 +437,34 @@ pod2usage(1) if ( $CONFIG{ 'help' } );
 
 
 #
-# Default container
+# Default options
 #
 $CONFIG{ 'container' } ||= "debian:stretch";
+$CONFIG{ 'recipe' }    ||= "thyme.recipe";
 
 #
-# We expect a recipe to be specified, if it is missing we'll terminate.
+# We expect the recipe to exist.
 #
-if ( !$CONFIG{ 'recipe' } )
+if ( !-e $CONFIG{ 'recipe' } )
 {
-    print "--recipe is mandatory\n";
+    print "Please specify a recipe to execute, via `--recipe=xx.recipe`.\n";
+    print "(The default file $CONFIG{'recipe'} was not found.)\n";
     exit(1);
 }
 
 
 #
-# Create the object, and execute it.
+# Create the helper object.
 #
 my $obj = Thyme->new( filename => $CONFIG{ 'recipe' },
                       verbose  => $CONFIG{ 'verbose' } );
-$obj->Execute( $CONFIG{ 'container' } );
 
 #
-# All done.
+# Now launch the job.
 #
-exit 0;
+my $ret = $obj->Execute( $CONFIG{ 'container' } );
+
+#
+# Preserve our result as an exit-code
+#
+exit($ret);
